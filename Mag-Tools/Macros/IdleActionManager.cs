@@ -13,6 +13,65 @@ namespace MagTools.Macros
 		readonly Timer timer = new Timer();
 		readonly Timer timerWithChestOpen = new Timer();
 
+		/// <summary>
+		/// Retail CraftTool Misc keyrings (ObjectClass.Misc) and the key each stores.
+		/// Custom BartleSkeet high-cap rings reuse retail names (e.g. Burning Sands / Sturdy Iron) so they match here.
+		/// Casino "Golden Keyring" / Exquisite items are WeenieType Key (ObjectClass.Key) — not MagTools Misc keyrings.
+		/// </summary>
+		struct KeyringPair
+		{
+			public readonly string KeyringName;
+			public readonly string KeyName;
+			public KeyringPair(string keyringName, string keyName) { KeyringName = keyringName; KeyName = keyName; }
+		}
+
+		static readonly KeyringPair[] KeyringPairs = new KeyringPair[]
+		{
+			new KeyringPair("Burning Sands Keyring", "Aged Legendary Key"),
+			new KeyringPair("Sturdy Iron Keyring", "Sturdy Iron Key"),
+			new KeyringPair("Sturdy Steel Keyring", "Sturdy Steel Key"),
+			new KeyringPair("Directive Keyring", "Directive Key"),
+			new KeyringPair("Master Keyring", "Master Key"),
+			new KeyringPair("Singularity Keyring", "Singularity Key"),
+			new KeyringPair("Granite Keyring", "Granite Key"),
+			new KeyringPair("Marble Keyring", "Marble Key"),
+			new KeyringPair("Black Marrow Keyring", "Black Marrow Key"),
+			new KeyringPair("Skeletal Falatacot Keyring", "Skeletal Falatacot Key"),
+			new KeyringPair("Black Coral Keyring", "Mana Forge Key"),
+		};
+
+		static bool IsKnownKeyring(string name)
+		{
+			for (int i = 0; i < KeyringPairs.Length; i++)
+				if (KeyringPairs[i].KeyringName == name) return true;
+			return false;
+		}
+
+		static bool IsKnownKey(string name)
+		{
+			for (int i = 0; i < KeyringPairs.Length; i++)
+				if (KeyringPairs[i].KeyName == name) return true;
+			return false;
+		}
+
+		static string KeyNameForKeyring(string keyringName)
+		{
+			for (int i = 0; i < KeyringPairs.Length; i++)
+				if (KeyringPairs[i].KeyringName == keyringName) return KeyringPairs[i].KeyName;
+			return null;
+		}
+
+		/// <summary>
+		/// Decal UsesTotal ~= ACE MaxStructure. Stock Misc keyrings use MaxStructure 50 but cook recipes
+		/// hard-cap NumKeys at 24 — treat UsesTotal==50 as effectiveCap 24. Custom high-cap rings
+		/// (e.g. MaxStructure 10000) use UsesTotal as-is.
+		/// </summary>
+		static int EffectiveKeyringCap(WorldObject wo)
+		{
+			int usesTotal = wo.Values(LongValueKey.UsesTotal);
+			return (usesTotal == 50) ? 24 : usesTotal;
+		}
+
 		public IdleActionManager()
 		{
 			try
@@ -76,16 +135,16 @@ namespace MagTools.Macros
 
 				if (Settings.SettingsManager.InventoryManagement.KeyRinger.Value)
 				{
-					if (e.New.ObjectClass == ObjectClass.Misc && e.New.Name == "Burning Sands Keyring")
+					if (e.New.ObjectClass == ObjectClass.Misc && IsKnownKeyring(e.New.Name))
 						CoreManager.Current.Actions.RequestId(e.New.Id);
 
-					if (e.New.ObjectClass == ObjectClass.Key && e.New.Name == "Aged Legendary Key")
+					if (e.New.ObjectClass == ObjectClass.Key && IsKnownKey(e.New.Name))
 						timer.Start();
 				}
 
 				if (Settings.SettingsManager.InventoryManagement.KeyDeringer.Value)
 				{
-					if (e.New.ObjectClass == ObjectClass.Misc && e.New.Name == "Burning Sands Keyring")
+					if (e.New.ObjectClass == ObjectClass.Misc && IsKnownKeyring(e.New.Name))
 						CoreManager.Current.Actions.RequestId(e.New.Id);
 				}
 			}
@@ -107,7 +166,7 @@ namespace MagTools.Macros
 
 				if (Settings.SettingsManager.InventoryManagement.KeyRinger.Value)
 				{
-					if (e.Changed.ObjectClass == ObjectClass.Misc && e.Changed.Name == "Burning Sands Keyring")
+					if (e.Changed.ObjectClass == ObjectClass.Misc && IsKnownKeyring(e.Changed.Name))
 					{
 						if (e.Change == WorldChangeType.IdentReceived)
 							timer.Start();
@@ -115,13 +174,13 @@ namespace MagTools.Macros
 							CoreManager.Current.Actions.RequestId(e.Changed.Id);
 					}
 
-					if (e.Changed.ObjectClass == ObjectClass.Key && e.Changed.Name == "Aged Legendary Key")
+					if (e.Changed.ObjectClass == ObjectClass.Key && IsKnownKey(e.Changed.Name))
 						timer.Start();
 				}
 
 				if (Settings.SettingsManager.InventoryManagement.KeyDeringer.Value)
 				{
-					if (e.Changed.ObjectClass == ObjectClass.Misc && e.Changed.Name == "Burning Sands Keyring")
+					if (e.Changed.ObjectClass == ObjectClass.Misc && IsKnownKeyring(e.Changed.Name))
 					{
 						if (e.Change == WorldChangeType.IdentReceived)
 							timer.Start();
@@ -139,7 +198,7 @@ namespace MagTools.Macros
 			{
 				if (Settings.SettingsManager.InventoryManagement.KeyDeringer.Value)
 				{
-					if (e.Released.ObjectClass == ObjectClass.Key && e.Released.Name == "Aged Legendary Key")
+					if (e.Released.ObjectClass == ObjectClass.Key && IsKnownKey(e.Released.Name))
 						timer.Start();
 				}
 			}
@@ -228,22 +287,32 @@ namespace MagTools.Macros
 					{
 						toolId = 0; targetId = 0; couldRequireConfirmation = false;
 						WorldObject bestKeyRing = null;
-						foreach (var wo in CoreManager.Current.WorldFilter.GetInventory())
+						string bestKeyName = null;
+						foreach (var pair in KeyringPairs)
 						{
-							// Keyring capacity: Decal UsesTotal ~= ACE MaxStructure. Stock Burning Sands
-							// weenie MaxStructure is 50 but cook recipe 6943 hard-caps NumKeys at 24 —
-							// so treat UsesTotal==50 as effectiveCap 24. Custom high-cap rings (e.g.
-							// MaxStructure 10000) use UsesTotal as-is. Keep UsesRemaining > 0.
-							int usesTotal = wo.Values(LongValueKey.UsesTotal);
-							int effectiveCap = (usesTotal == 50) ? 24 : usesTotal;
-							if (wo.HasIdData && wo.ObjectClass == ObjectClass.Misc && wo.Name == "Burning Sands Keyring" && wo.Values(LongValueKey.UsesRemaining) > 0 && wo.Values(LongValueKey.KeysHeld) < effectiveCap)
+							WorldObject pairBestRing = null;
+							int pairKeyId = 0;
+							foreach (var wo in CoreManager.Current.WorldFilter.GetInventory())
 							{
-								if (bestKeyRing == null || (bestKeyRing.Values(LongValueKey.KeysHeld) < wo.Values(LongValueKey.KeysHeld)))
-									bestKeyRing = wo;
-								else if (bestKeyRing.Values(LongValueKey.KeysHeld) == 0 && bestKeyRing.Values(LongValueKey.UsesRemaining) > wo.Values(LongValueKey.UsesRemaining))
-									bestKeyRing = wo;
+								if (wo.HasIdData && wo.ObjectClass == ObjectClass.Misc && wo.Name == pair.KeyringName
+									&& wo.Values(LongValueKey.UsesRemaining) > 0 && wo.Values(LongValueKey.KeysHeld) < EffectiveKeyringCap(wo))
+								{
+									if (pairBestRing == null || (pairBestRing.Values(LongValueKey.KeysHeld) < wo.Values(LongValueKey.KeysHeld)))
+										pairBestRing = wo;
+									else if (pairBestRing.Values(LongValueKey.KeysHeld) == 0 && pairBestRing.Values(LongValueKey.UsesRemaining) > wo.Values(LongValueKey.UsesRemaining))
+										pairBestRing = wo;
+								}
+								if (wo.ObjectClass == ObjectClass.Key && wo.Name == pair.KeyName) pairKeyId = wo.Id;
 							}
-							if (wo.ObjectClass == ObjectClass.Key && wo.Name == "Aged Legendary Key") targetId = wo.Id;
+							if (pairBestRing != null && pairKeyId != 0)
+							{
+								if (bestKeyRing == null || pairBestRing.Values(LongValueKey.KeysHeld) > bestKeyRing.Values(LongValueKey.KeysHeld))
+								{
+									bestKeyRing = pairBestRing;
+									bestKeyName = pair.KeyName;
+									targetId = pairKeyId;
+								}
+							}
 						}
 						if (bestKeyRing != null)
 							toolId = bestKeyRing.Id;
@@ -263,14 +332,14 @@ namespace MagTools.Macros
 						{
 							if (wo.ObjectClass == ObjectClass.Misc && wo.Name == "Intricate Carving Tool") toolId = wo.Id;
 
-							// If we have a key in inventory, we're good
-							if (wo.ObjectClass == ObjectClass.Key && wo.Name == "Aged Legendary Key")
+							// If we have a matching key in inventory, we're good
+							if (wo.ObjectClass == ObjectClass.Key && IsKnownKey(wo.Name))
 								return;
 						}
 
 						foreach (var wo in CoreManager.Current.WorldFilter.GetInventory())
 						{
-							if (wo.HasIdData && wo.ObjectClass == ObjectClass.Misc && wo.Name == "Burning Sands Keyring" && wo.Values(LongValueKey.KeysHeld) > 0)
+							if (wo.HasIdData && wo.ObjectClass == ObjectClass.Misc && IsKnownKeyring(wo.Name) && wo.Values(LongValueKey.KeysHeld) > 0)
 							{
 								targetId = wo.Id;
 								break;
@@ -356,14 +425,14 @@ namespace MagTools.Macros
 						{
 							if (wo.ObjectClass == ObjectClass.Misc && wo.Name == "Intricate Carving Tool") toolId = wo.Id;
 
-							// If we have a key in inventory, we're good
-							if (wo.ObjectClass == ObjectClass.Key && wo.Name == "Aged Legendary Key")
+							// If we have a matching key in inventory, we're good
+							if (wo.ObjectClass == ObjectClass.Key && IsKnownKey(wo.Name))
 								return;
 						}
 
 						foreach (var wo in CoreManager.Current.WorldFilter.GetInventory())
 						{
-							if (wo.HasIdData && wo.ObjectClass == ObjectClass.Misc && wo.Name == "Burning Sands Keyring" && wo.Values(LongValueKey.KeysHeld) > 0)
+							if (wo.HasIdData && wo.ObjectClass == ObjectClass.Misc && IsKnownKeyring(wo.Name) && wo.Values(LongValueKey.KeysHeld) > 0)
 							{
 								targetId = wo.Id;
 								break;
