@@ -230,7 +230,13 @@ namespace MagTools.Macros
 						WorldObject bestKeyRing = null;
 						foreach (var wo in CoreManager.Current.WorldFilter.GetInventory())
 						{
-							if (wo.HasIdData && wo.ObjectClass == ObjectClass.Misc && wo.Name == "Burning Sands Keyring" && wo.Values(LongValueKey.UsesRemaining) > 0 && wo.Values(LongValueKey.KeysHeld) < 24)
+							// Keyring capacity: Decal UsesTotal ~= ACE MaxStructure. Stock Burning Sands
+							// weenie MaxStructure is 50 but cook recipe 6943 hard-caps NumKeys at 24 —
+							// so treat UsesTotal==50 as effectiveCap 24. Custom high-cap rings (e.g.
+							// MaxStructure 10000) use UsesTotal as-is. Keep UsesRemaining > 0.
+							int usesTotal = wo.Values(LongValueKey.UsesTotal);
+							int effectiveCap = (usesTotal == 50) ? 24 : usesTotal;
+							if (wo.HasIdData && wo.ObjectClass == ObjectClass.Misc && wo.Name == "Burning Sands Keyring" && wo.Values(LongValueKey.UsesRemaining) > 0 && wo.Values(LongValueKey.KeysHeld) < effectiveCap)
 							{
 								if (bestKeyRing == null || (bestKeyRing.Values(LongValueKey.KeysHeld) < wo.Values(LongValueKey.KeysHeld)))
 									bestKeyRing = wo;
